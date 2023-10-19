@@ -2,5 +2,8 @@
 quash: quash.c
 		gcc -g quash.c -lpthread -lm -o quash
 
+test: quash
+	./quash
+
 clean:
-	rm quash
+	rm -rf quash

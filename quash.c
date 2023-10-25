@@ -6,11 +6,6 @@
 #include <dirent.h>
 
 
-static char cmd_char = '\0';
-static char buf[1024];
-int buffer_count = 0;
-
-
 char input[1024];
 
 
@@ -18,40 +13,12 @@ char *argv[];
 int argc;
 
 DIR *dir;
-struct dirent *dirent;
+struct dirent *entry;
 
-
-/* COMMAND LINE PARSER 
- *    stores argc and argv values to access
- *   command line input outside of main
-*/
-void parse_command_line() {
-    while (argc != 0) {
-        argv[argc] = NULL; 
-        argc--;
-    }
-
-    buffer_count = 0;
-    char *new_buf;
-
-    while (cmd_char != '\n') {
-        buf[buffer_count++] = cmd_char;
-        cmd_char = getchar();
-    }
-    buf[buffer_count] = 0x00;
-    new_buf = strtok(buf, " ");         // tokenize, separated by spaces
-    
-    while(new_buf != NULL) {
-        argv[argc] = new_buf;
-        new_buf = strtok(NULL, " "); 
-        argc++;
-    }
-
-}
 
 // prints shell line
 void print_quash(){
-    printf("\n[QUASH]$ ");
+    printf("[QUASH]$ ");
 }
 
 // prints pwd
@@ -62,18 +29,27 @@ void run_pwd() {
 }
 
 void run_cd() {
-    if (argv[1] == NULL || argv[1] == '~'){
+    // char up_dir = "..";
+    if (argv[1] == NULL || strcmp(argv[1], "~") == 0){
         chdir(getenv("HOME"));
+    } else if (strcmp(argv[1], "..") == 0 || strcmp(argv[1], "../") == 0) {
+        chdir("..");
+    } else {
+        if (chdir(argv[1]) == -1) {
+            perror("cd");
+        }
     }
 }
 
 void run_ls() {
     dir = opendir(".");         // opens current directory
 
-    while ((dirent = readdir(dir))) {
-        printf("%s\n", dirent->d_name);         // while in current directory, print all content
+    while ((entry = readdir(dir))) {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0){  
+            printf("%s\t", entry->d_name);         // while in current directory, print all content
+        }
     }
-
+    printf("\n");
     closedir(dir);      // closes directory
 }
 
@@ -81,10 +57,25 @@ void run_echo(){
     
 }
 
+/* COMMAND LINE PARSER 
+ *    stores argc and argv values to access
+ *   command line input outside of main
+*/
+void parse_command_line() {
+    int argc = 0;
+    char *token = strtok(input, " ");
+    while (token != NULL) {
+        argv[argc++] = token;
+        token = strtok(NULL, " ");
+    }
+    argv[argc] = NULL;
+}
+
 int run_commands(){
     fgets(input, sizeof(input), stdin);
     input[strlen(input) - 1] = '\0';
 
+    parse_command_line();
     // exit or quit prompt
     
     if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){
@@ -92,17 +83,17 @@ int run_commands(){
         exit(0);
     }
 
-    // if (strcmp("#", argv[0]) == 0){
-    //     return 0;
-    // }
+    if (strcmp("#", argv[0]) == 0){
+        return 0;
+    }
 
     // prints cd
     if (strcmp("cd", argv[0]) == 0) {
         run_cd();
-        run_pwd();
+        // run_pwd();
         return 0;
     }
-    if (strcmp("ls", input) == 0) {
+    if (strcmp("ls", argv[0]) == 0) {
         run_ls();
         return 0;
     }
@@ -116,7 +107,7 @@ int run_commands(){
         run_echo();
         return 0;
     }
-
+    // clear input arr for each new iteration
 }
 
 int main (int argc, char *argv[]) 
@@ -124,21 +115,26 @@ int main (int argc, char *argv[])
 
     printf("\n\nWelcome to Quash!\n\n");
     while(1){
-        print_quash();
+        // print_quash();
         
         // cmd_char = getchar();
-        fgets(input, sizeof(input), stdin);
-        input[strlen(input) - 1] = '\0';
-        
-        if (input == ' '){
+        // fgets(input, sizeof(input), stdin);
+        // input[strlen(input) - 1] = '\0';
+        if (argc == 0){
+            continue;
+        }
+        if (*input == ' '){
             print_quash();
         } else {
-            // parse_command_line();
-            run_commands();
-
+            parse_command_line();
             print_quash();
+            run_commands();
+            
+
         }
-        printf(argv[0]);
+        for (int i = 0; i < argc; i++) {
+                argv[i] = NULL;
+        }
     }
     return 0;
 }

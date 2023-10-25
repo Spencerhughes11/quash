@@ -3,12 +3,51 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <dirent.h>
 
-static char char_in;
+
+static char cmd_char = '\0';
+static char buf[1024];
+int buffer_count = 0;
+
+
 char input[1024];
+
 
 char *argv[];
 int argc;
+
+DIR *dir;
+struct dirent *dirent;
+
+
+/* COMMAND LINE PARSER 
+ *    stores argc and argv values to access
+ *   command line input outside of main
+*/
+void parse_command_line() {
+    while (argc != 0) {
+        argv[argc] = NULL; 
+        argc--;
+    }
+
+    buffer_count = 0;
+    char *new_buf;
+
+    while (cmd_char != '\n') {
+        buf[buffer_count++] = cmd_char;
+        cmd_char = getchar();
+    }
+    buf[buffer_count] = 0x00;
+    new_buf = strtok(buf, " ");         // tokenize, separated by spaces
+    
+    while(new_buf != NULL) {
+        argv[argc] = new_buf;
+        new_buf = strtok(NULL, " "); 
+        argc++;
+    }
+
+}
 
 // prints shell line
 void print_quash(){
@@ -28,69 +67,78 @@ void run_cd() {
     }
 }
 
+void run_ls() {
+    dir = opendir(".");         // opens current directory
+
+    while ((dirent = readdir(dir))) {
+        printf("%s\n", dirent->d_name);         // while in current directory, print all content
+    }
+
+    closedir(dir);      // closes directory
+}
+
+void run_echo(){
+    
+}
+
 int run_commands(){
     fgets(input, sizeof(input), stdin);
     input[strlen(input) - 1] = '\0';
 
     // exit or quit prompt
     
-    if (strcmp("exit", input) == 0 || strcmp(input, "quit") == 0 ){
+    if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){
         printf("Exiting quash...\n\n");
         exit(0);
     }
 
-    // if (strcmp("#", input) == 0){
+    // if (strcmp("#", argv[0]) == 0){
     //     return 0;
     // }
 
     // prints cd
-    if (strcmp("cd", input) == 0) {
+    if (strcmp("cd", argv[0]) == 0) {
         run_cd();
         run_pwd();
         return 0;
     }
+    if (strcmp("ls", input) == 0) {
+        run_ls();
+        return 0;
+    }
+
     // prints pwd
-    if (strcmp("pwd", input) == 0) {
+    if (strcmp("pwd", argv[0]) == 0) {
         run_pwd();
         return 0;
     }
+    if (strcmp("echo", argv[0]) == 0) {
+        run_echo();
+        return 0;
+    }
+
 }
 
 int main (int argc, char *argv[]) 
 {
-//     printf(" -----------------------------------------------------------------------------------------------------------"                                                                                                           
-//    "  QQQQQQQQQ     UUUUUUUU     UUUUUUUU           AAA                 SSSSSSSSSSSSSSS HHHHHHHHH     HHHHHHHHH"
-//    "QQ:::::::::QQ   U::::::U     U::::::U          A:::A              SS:::::::::::::::SH:::::::H     H:::::::H"
-//  "QQ:::::::::::::QQ U::::::U     U::::::U         A:::::A            S:::::SSSSSS::::::SH:::::::H     H:::::::H"
-// "Q:::::::QQQ:::::::QUU:::::U     U:::::UU        A:::::::A           S:::::S     SSSSSSSHH::::::H     H::::::HH"
-// "Q::::::O   Q::::::Q U:::::U     U:::::U        A:::::::::A          S:::::S              H:::::H     H:::::H"  
-// "Q:::::O     Q:::::Q U:::::D     D:::::U       A:::::A:::::A         S:::::S              H:::::H     H:::::H"  
-// "Q:::::O     Q:::::Q U:::::D     D:::::U      A:::::A A:::::A         S::::SSSS           H::::::HHHHH::::::H"  
-// "Q:::::O     Q:::::Q U:::::D     D:::::U     A:::::A   A:::::A         SS::::::SSSSS      H:::::::::::::::::H"  
-// "Q:::::O     Q:::::Q U:::::D     D:::::U    A:::::A     A:::::A          SSS::::::::SS    H:::::::::::::::::H"  
-// "Q:::::O     Q:::::Q U:::::D     D:::::U   A:::::AAAAAAAAA:::::A            SSSSSS::::S   H::::::HHHHH::::::H"  
-// "Q:::::O  QQQQ:::::Q U:::::D     D:::::U  A:::::::::::::::::::::A                S:::::S  H:::::H     H:::::H" 
-// "Q::::::O Q::::::::Q U::::::U   U::::::U A:::::AAAAAAAAAAAAA:::::A               S:::::S  H:::::H     H:::::H"  
-// "Q:::::::QQ::::::::Q U:::::::UUU:::::::UA:::::A             A:::::A  SSSSSSS     S:::::SHH::::::H     H::::::HH"
-//  "QQ::::::::::::::Q   UU:::::::::::::UUA:::::A               A:::::A S::::::SSSSSS:::::SH:::::::H     H:::::::H"
-//    "QQ:::::::::::Q      UU:::::::::UU A:::::A                 A:::::AS:::::::::::::::SS H:::::::H     H:::::::H"
-//      "QQQQQQQQ::::QQ      UUUUUUUUU  AAAAAAA                   AAAAAAASSSSSSSSSSSSSSS   HHHHHHHHH     HHHHHHHHH"
-//              "Q:::::Q"                                                                                         
-//               "QQQQQQ\n\n\r");
+
     printf("\n\nWelcome to Quash!\n\n");
     while(1){
         print_quash();
         
-        // char_in = getchar();
+        // cmd_char = getchar();
         fgets(input, sizeof(input), stdin);
         input[strlen(input) - 1] = '\0';
         
         if (input == ' '){
             print_quash();
         } else {
-            print_quash();
+            // parse_command_line();
             run_commands();
+
+            print_quash();
         }
+        printf(argv[0]);
     }
     return 0;
 }

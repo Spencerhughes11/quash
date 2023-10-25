@@ -56,6 +56,29 @@ void run_ls() {
 void run_echo(){
     
 }
+void run_execution() {
+    pid_t pid = fork();
+    printf(argv[0]);
+
+
+    if (pid == -1) {
+        // Fork failed
+        perror("Fork failed");
+        exit(1);
+    } else if (pid == 0) {
+        // Child process
+        // Execute the command in the child process
+        if (execvp(argv[0], argv) == -1) {
+            perror("Command execution failed");
+            exit(1);
+        }
+    } else {
+        // Parent process
+        // In the parent process, you can print the background job started message
+        printf("Background job started: PID %d\n", pid);
+
+    }
+}
 
 /* COMMAND LINE PARSER 
  *    stores argc and argv values to access
@@ -74,9 +97,25 @@ void parse_command_line() {
 int run_commands(){
     fgets(input, sizeof(input), stdin);
     input[strlen(input) - 1] = '\0';
+    int argc = 0;
+    char *token = strtok(input, " ");
+    while (token != NULL) {
+        argv[argc++] = token;
+        token = strtok(NULL, " ");
+    }
+    argv[argc] = NULL;
 
-    parse_command_line();
+    // parse_command_line();
     // exit or quit prompt
+    if (strcmp("&",argv[argc - 1]) == 0){
+        // dir = opendir(".");         // opens current directory
+        argv[argc - 1] == NULL;
+        run_execution();
+        return 0;
+        
+
+        
+    }
     
     if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){
         printf("Exiting quash...\n\n");

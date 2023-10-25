@@ -14,6 +14,11 @@ int argc;
 
 DIR *dir;
 struct dirent *entry;
+// Define a maximum number of background jobs
+#define MAX_BACKGROUND_JOBS 10
+
+// Array to store the PIDs of background jobs
+pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
 
 
 // prints shell line
@@ -53,6 +58,20 @@ void run_ls() {
     closedir(dir);      // closes directory
 }
 
+
+void check_background_jobs() {
+    for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
+        if (background_jobs[i] != 0) {
+            int status;
+            pid_t result = waitpid(background_jobs[i], &status, WNOHANG);
+            if (result > 0) {
+                // The background job with PID result has completed
+                printf("Completed: [JOBID] %d %s\n", result, argv[0]); // You can replace [JOBID] and COMMAND as needed.
+                background_jobs[i] = 0; // Clear the job from the array
+            }
+        }
+    }
+}
 // * FIXME: implement path echoes
 // * doesn't remove single quotes 
 
@@ -77,6 +96,7 @@ void run_echo(int argc){
 void run_execution() {
     pid_t pid = fork();
 
+
     if (pid == -1) {
         // Fork failed
         perror("Fork failed");
@@ -84,7 +104,9 @@ void run_execution() {
     } else if (pid == 0) {
         // Child process
         // Execute the command in the child process
-        if (execvp(argv[0], argv) == -1) {
+        
+
+        if (execvp(argv[0], NULL) == -1) {
             perror("Command execution failed");
             exit(1);
         }
@@ -92,8 +114,16 @@ void run_execution() {
         // Parent process
         // In the parent process, you can print the background job started message
         printf("Background job started: PID %d\n", pid);
+        
+        for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
+            if (background_jobs[i] == 0) {
+                background_jobs[i] = pid;
+                break;
+            }
+        }
 
     }
+
 }
 
 /* COMMAND LINE PARSER 
@@ -123,8 +153,8 @@ int run_commands(){
         token = strtok(NULL, " ");
     }
     argv[argc] = NULL;
-    
     if (strcmp("&", argv[argc - 1]) == 0){
+
         // dir = opendir(".");         // opens current directory
         argv[argc - 1] = NULL;
         run_execution();
@@ -187,9 +217,8 @@ int main (int argc, char *argv[])
             
 
         }
-        // for (int i = 0; i < argc; i++) {
-        //         argv[i] = NULL;
-        // }
+        check_background_jobs();
+
     }
     return 0;
 }

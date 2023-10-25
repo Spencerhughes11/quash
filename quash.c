@@ -14,6 +14,11 @@ int argc;
 
 DIR *dir;
 struct dirent *entry;
+// Define a maximum number of background jobs
+#define MAX_BACKGROUND_JOBS 10
+
+// Array to store the PIDs of background jobs
+pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
 
 
 // prints shell line
@@ -56,9 +61,21 @@ void run_ls() {
 void run_echo(){
     
 }
+void check_background_jobs() {
+    for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
+        if (background_jobs[i] != 0) {
+            int status;
+            pid_t result = waitpid(background_jobs[i], &status, WNOHANG);
+            if (result > 0) {
+                // The background job with PID result has completed
+                printf("Completed: [JOBID] %d %s\n", result, argv[0]); // You can replace [JOBID] and COMMAND as needed.
+                background_jobs[i] = 0; // Clear the job from the array
+            }
+        }
+    }
+}
 void run_execution() {
     pid_t pid = fork();
-    printf(argv[0]);
 
 
     if (pid == -1) {
@@ -68,7 +85,9 @@ void run_execution() {
     } else if (pid == 0) {
         // Child process
         // Execute the command in the child process
-        if (execvp(argv[0], argv) == -1) {
+        
+
+        if (execvp(argv[0], NULL) == -1) {
             perror("Command execution failed");
             exit(1);
         }
@@ -76,8 +95,16 @@ void run_execution() {
         // Parent process
         // In the parent process, you can print the background job started message
         printf("Background job started: PID %d\n", pid);
+        
+        for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
+            if (background_jobs[i] == 0) {
+                background_jobs[i] = pid;
+                break;
+            }
+        }
 
     }
+
 }
 
 /* COMMAND LINE PARSER 
@@ -105,11 +132,10 @@ int run_commands(){
     }
     argv[argc] = NULL;
 
-    // parse_command_line();
     // exit or quit prompt
     if (strcmp("&",argv[argc - 1]) == 0){
         // dir = opendir(".");         // opens current directory
-        argv[argc - 1] == NULL;
+        argv[argc - 1] = NULL;
         run_execution();
         return 0;
         
@@ -171,6 +197,7 @@ int main (int argc, char *argv[])
             
 
         }
+        check_background_jobs();
         for (int i = 0; i < argc; i++) {
                 argv[i] = NULL;
         }

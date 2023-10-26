@@ -4,7 +4,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <dirent.h>
+#include <stdbool.h>
 
+// Define a maximum number of background jobs
+#define MAX_BACKGROUND_JOBS 10
 
 char input[1024];
 
@@ -14,8 +17,7 @@ int argc;
 
 DIR *dir;
 struct dirent *entry;
-// Define a maximum number of background jobs
-#define MAX_BACKGROUND_JOBS 10
+
 
 // Array to store the PIDs of background jobs
 pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
@@ -25,6 +27,10 @@ pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
 void print_quash(){
     printf("[QUASH]$ ");
 }
+
+/* **********************************************************************************
+   *                              BASIC SHELL COMMANDS                              *
+   ********************************************************************************** */
 
 // prints pwd
 void run_pwd() {
@@ -58,6 +64,56 @@ void run_ls() {
     closedir(dir);      // closes directory
 }
 
+// * FIXME: implement path echoes
+
+void run_echo(int argc){
+    char *single_quote = "'";
+    char *path;
+    char *env;
+    int is_env = 0;
+
+    for (int i = 1; i < argc; i++){
+        // ignores comments
+        if (strcmp("#", argv[i]) == 0){
+            break;      
+        }
+        if( argv[ i ][ 0 ] == '$' ){
+            env = argv[i] + 1;
+            path = getenv(env);
+            printf(path);
+            is_env = 1;
+        }
+        if ((argv[i][0] == *single_quote) || (argv[i][0] == '"') ){       // handles if string begins with single or double quote
+            // argv[i] = argv[i+1];
+            argv[i] = argv[i] + 1;      // skips
+        }
+        if ((argv[i][strlen(argv[i]) - 1] == *single_quote) || (argv[i][strlen(argv[i]) - 1] == '"') ){       // handles if string ends with single or double quote
+            argv[i][strlen(argv[i]) - 1] ='\0';         // sets to null
+        }
+        if (!is_env){
+            printf("%s ", argv[i]);
+        }
+    }
+    printf("\n");
+}
+
+void run_export() {
+    // Split input into environment and the desired new path
+    char *env = strtok(argv[1], "=");
+    char *new_path = strtok(NULL, "=");
+
+    setenv(env, new_path, 1);
+    // printf("Environment env %s set to %s\n", env, new_path);
+    // } else {
+    //     perror("setenv");
+    // }
+    
+
+}
+
+/* **********************************************************************************
+   *                                      JOBS                                      *
+   ********************************************************************************** */
 
 void check_background_jobs() {
     for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
@@ -71,26 +127,6 @@ void check_background_jobs() {
             }
         }
     }
-}
-// * FIXME: implement path echoes
-// * doesn't remove single quotes 
-
-void run_echo(int argc){
-    for (int i = 1; i < argc; i++){
-        if (strcmp("#", argv[i]) == 0){
-            break;      // ignores comments
-        }
-
-        if ((argv[i][0] == "'") || (argv[i][0] == '"') ){       // handles if string begins with single or double quote
-            // argv[i] = argv[i+1];
-            argv[i] = argv[i] + 1;      // skips
-        }
-        if ((argv[i][strlen(argv[i]) - 1] == "'") || (argv[i][strlen(argv[i]) - 1] == '"') ){       // handles if string ends with single or double quote
-            argv[i][strlen(argv[i]) - 1] ='\0';         // sets to null
-        }
-        printf("%s ", argv[i]);
-    }
-    printf("\n");
 }
 
 void run_execution() {
@@ -168,6 +204,7 @@ int run_commands(){
         exit(0);
     }
 
+    // ignore comments
     if (strcmp("#", argv[0]) == 0){
         return 0;
     }
@@ -190,6 +227,10 @@ int run_commands(){
     }
     if (strcmp("echo", argv[0]) == 0) {
         run_echo(argc);
+        return 0;
+    }
+    if (strcmp("export", argv[0]) == 0) {
+        run_export();
         return 0;
     }
     // clear input arr for each new iteration

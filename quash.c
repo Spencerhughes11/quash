@@ -150,6 +150,8 @@ void run_execution() {
         // Parent process
         // In the parent process, you can print the background job started message
         printf("Background job started: PID %d\n", pid);
+
+
         
         for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
             if (background_jobs[i] == 0) {
@@ -160,6 +162,35 @@ void run_execution() {
 
     }
 
+}
+
+void run_foreground() {
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        // Fork failed
+        perror("Fork failed");
+        exit(1);
+    } else if (pid == 0) {
+        // Child process
+        // Execute the command in the child process
+        if (execvp(argv[0], argv) == -1) {
+            perror("Command execution failed");
+            exit(1);
+        }
+    } else {
+        // Parent process
+        int status;
+        // Wait for the child process to complete
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("Wait failed");
+        } else {
+            // Child process has completed
+            // if (WIFEXITED(status)) {
+            //     printf("Foreground job %d exited with status %d\n", pid, WEXITSTATUS(status));
+            // }
+        }
+    }
 }
 
 /* COMMAND LINE PARSER 
@@ -189,14 +220,7 @@ int run_commands(){
         token = strtok(NULL, " ");
     }
     argv[argc] = NULL;
-    if (strcmp("&", argv[argc - 1]) == 0){
 
-        // dir = opendir(".");         // opens current directory
-        argv[argc - 1] = NULL;
-        run_execution();
-        return 0;
-     
-    }
     
     // exit or quit prompt
     if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){
@@ -232,6 +256,16 @@ int run_commands(){
     if (strcmp("export", argv[0]) == 0) {
         run_export();
         return 0;
+    }
+    if (strcmp("&", argv[argc - 1]) == 0){
+
+        argv[argc - 1] = NULL;
+        run_execution();
+        return 0;
+     
+    } else{
+        run_foreground();
+
     }
     // clear input arr for each new iteration
 }

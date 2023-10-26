@@ -21,6 +21,7 @@ struct dirent *entry;
 
 // Array to store the PIDs of background jobs
 pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
+char background_processes[MAX_BACKGROUND_JOBS];
 
 
 // prints shell line
@@ -115,6 +116,27 @@ void run_export() {
    *                                      JOBS                                      *
    ********************************************************************************** */
 
+void run_kill(int signal, int pid){
+    if (kill(pid, signal) == 0) {
+        printf("Signal %d sent to process with ID %d\n", signal, pid);
+        return 0;
+    } else {
+        perror("Signal sending failed");
+        return -1;
+    }
+}
+void run_jobs(){
+    // printf("Current Running Jobs:");
+    for (int i = 0; i < 10;i++){
+        if (background_jobs[i] != 0){
+
+
+        
+            printf("JobID: %d process: %s \n",background_jobs[i],&background_processes[i]);
+        }
+    }
+}
+
 void check_background_jobs() {
     for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
         if (background_jobs[i] != 0) {
@@ -122,8 +144,9 @@ void check_background_jobs() {
             pid_t result = waitpid(background_jobs[i], &status, WNOHANG);
             if (result > 0) {
                 // The background job with PID result has completed
-                printf("Completed: [JOBID] %d %s\n", result, argv[0]); // You can replace [JOBID] and COMMAND as needed.
+                printf("Completed: [JOBID] %d %s\n", result, &background_processes[i]); // You can replace [JOBID] and COMMAND as needed.
                 background_jobs[i] = 0; // Clear the job from the array
+                // free(background_processes[i]);
             }
         }
     }
@@ -155,6 +178,7 @@ void run_execution() {
         
         for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
             if (background_jobs[i] == 0) {
+                strncpy(&background_processes[i],argv[0],sizeof(argv[0]+3));
                 background_jobs[i] = pid;
                 break;
             }
@@ -243,6 +267,16 @@ int run_commands(){
         run_ls();
         return 0;
     }
+    if (strcmp("kill", argv[0]) == 0) {
+        int signalNumber = atoi(argv[1]); // Convert signal number to integer
+        int targetPID = atoi(argv[2]);
+        run_kill(signalNumber, targetPID);
+        return 0;
+    }
+    if (strcmp("jobs", argv[0]) == 0) {
+        run_jobs();
+        return 0;
+    }
 
     // prints pwd
     if (strcmp("pwd", argv[0]) == 0) {
@@ -283,7 +317,7 @@ int main (int argc, char *argv[])
         if (argc == 0){
             continue;
         }
-        if (*input == ' '){
+        if (argv[0] == "\n"){
             print_quash();
         } else {
             parse_command_line();

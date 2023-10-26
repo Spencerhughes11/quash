@@ -1,8 +1,16 @@
+/* ***********************************************************************************
+   *                                      QUASH                                      *
+   *                                                                                 *
+   *                    CREATED BY: Spencer Hughes and Pete Junge                    *
+   *********************************************************************************** */
+
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
 #include <dirent.h>
 #include <stdbool.h>
 #include <sys/wait.h>
@@ -11,6 +19,8 @@
 #define MAX_BACKGROUND_JOBS 10
 
 char input[1024];
+char command_in[128];
+char command_out[128];
 
 
 char *argv[];
@@ -67,6 +77,7 @@ void run_ls() {
 
 // * FIXME: won't run multilevel env echoes
 // * ex: echo $HOME/Desktop
+// * REDIRECTION: still echoes string before > or <
 
 void run_echo(int argc){
     char *single_quote = "'";
@@ -85,6 +96,9 @@ void run_echo(int argc){
             path = getenv(env);
             printf(path);
             is_env = 1;         // is env case
+        }
+        if (strcmp(argv[i], "&") == 0 || strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0){
+                break;
         }
         if ((argv[i][0] == *single_quote) || (argv[i][0] == '"') ){       // handles if string begins with single or double quote
             argv[i] = argv[i] + 1;      // skips
@@ -107,6 +121,56 @@ void run_export() {
     setenv(env, new_path, 1);
 
 }
+
+/* ***********************************************************************************
+   *                              REDIRECTION AND PIPES                              *
+   *********************************************************************************** */
+
+
+int is_symbol (int argc) {
+    int is_in = 0, is_out = 0;
+
+    for (int i = 0; i < argc; i++){
+            // Redirect OUT
+            if (strcmp(argv[i], ">") == 0){
+                argv[i] = NULL;
+                strcpy(command_out, argv[i+1]);
+                return 1;
+            }
+            if (strcmp(argv[i], "<") == 0){
+                argv[i] = NULL;
+                strcpy(command_in, argv[i+1]);
+                return 2;
+            }
+        }
+    return 0;
+}
+
+// * FIXME: not working yet 
+void redirect(int argc) {
+    pid_t pid = fork();
+
+    if (pid == 0) {
+        int fd_in, fd_out;
+        if (is_symbol(argc) == 1) {             
+            /* If Redirect outsymbol (>) found */
+            fd_out = open(command_out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            dup2(fd_out, STDOUT_FILENO);
+
+            close(fd_out);
+        }
+        if (is_symbol(argc) == 2) {
+            fd_in = open(command_in, O_RDONLY);
+            dup2(fd_in, STDIN_FILENO);
+
+            close(fd_in);
+        }
+        exit(0);
+    } else {
+        wait(NULL);
+    }
+}
+
 
 /* **********************************************************************************
    *                                      JOBS                                      *
@@ -145,8 +209,6 @@ void run_execution() {
         // In the parent process, you can print the background job started message
         printf("Background job started: PID %d\n", pid);
 
-
-        
         for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
             if (background_jobs[i] == 0) {
                 background_jobs[i] = pid;
@@ -178,14 +240,10 @@ void run_foreground() {
         // Wait for the child process to complete
         if (waitpid(pid, &status, 0) == -1) {
             perror("Wait failed");
-        } else {
-            // Child process has completed
-            // if (WIFEXITED(status)) {
-            //     printf("Foreground job %d exited with status %d\n", pid, WEXITSTATUS(status));
-            // }
-        }
+        } 
     }
 }
+
 
 /* COMMAND LINE PARSER 
  *   stores argc and argv values to access
@@ -263,6 +321,11 @@ int run_commands(){
         run_foreground();
 
     }
+    if (is_symbol(argc) == 1 || is_symbol(argc) == 2) {
+            redirect(argc);
+            return 0;
+        }
+
 }
 
 int main (int argc, char *argv[]) 
@@ -281,9 +344,9 @@ int main (int argc, char *argv[])
             print_quash();
             run_commands();
             
+            check_background_jobs();
 
         }
-        check_background_jobs();
 
     }
     return 0;

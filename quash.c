@@ -251,6 +251,8 @@ int run_commands(){
         run_export();
         return 0;
     }
+
+    // Background vs. Foreground execution
     if (strcmp("&", argv[argc - 1]) == 0){
 
         argv[argc - 1] = NULL;
@@ -261,7 +263,6 @@ int run_commands(){
         run_foreground();
 
     }
-    // clear input arr for each new iteration
 }
 
 int main (int argc, char *argv[]) 
@@ -269,11 +270,7 @@ int main (int argc, char *argv[])
 
     printf("\n\nWelcome to Quash!\n\n");
     while(1){
-        // print_quash();
-        
-        // cmd_char = getchar();
-        // fgets(input, sizeof(input), stdin);
-        // input[strlen(input) - 1] = '\0';
+
         if (argc == 0){
             continue;
         }

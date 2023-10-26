@@ -5,6 +5,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <stdbool.h>
+#include <sys/wait.h>
 
 // Define a maximum number of background jobs
 #define MAX_BACKGROUND_JOBS 10
@@ -64,7 +65,8 @@ void run_ls() {
     closedir(dir);      // closes directory
 }
 
-// * FIXME: implement path echoes
+// * FIXME: won't run multilevel env echoes
+// * ex: echo $HOME/Desktop
 
 void run_echo(int argc){
     char *single_quote = "'";
@@ -77,19 +79,20 @@ void run_echo(int argc){
         if (strcmp("#", argv[i]) == 0){
             break;      
         }
+        // handle environment variables
         if( argv[ i ][ 0 ] == '$' ){
             env = argv[i] + 1;
             path = getenv(env);
             printf(path);
-            is_env = 1;
+            is_env = 1;         // is env case
         }
         if ((argv[i][0] == *single_quote) || (argv[i][0] == '"') ){       // handles if string begins with single or double quote
-            // argv[i] = argv[i+1];
             argv[i] = argv[i] + 1;      // skips
         }
         if ((argv[i][strlen(argv[i]) - 1] == *single_quote) || (argv[i][strlen(argv[i]) - 1] == '"') ){       // handles if string ends with single or double quote
             argv[i][strlen(argv[i]) - 1] ='\0';         // sets to null
         }
+        // if not environment case, echo args
         if (!is_env){
             printf("%s ", argv[i]);
         }
@@ -101,13 +104,7 @@ void run_export() {
     // Split input into environment and the desired new path
     char *env = strtok(argv[1], "=");
     char *new_path = strtok(NULL, "=");
-
     setenv(env, new_path, 1);
-    // printf("Environment env %s set to %s\n", env, new_path);
-    // } else {
-    //     perror("setenv");
-    // }
-    
 
 }
 
@@ -132,7 +129,6 @@ void check_background_jobs() {
 void run_execution() {
     pid_t pid = fork();
 
-
     if (pid == -1) {
         // Fork failed
         perror("Fork failed");
@@ -140,8 +136,6 @@ void run_execution() {
     } else if (pid == 0) {
         // Child process
         // Execute the command in the child process
-        
-
         if (execvp(argv[0], NULL) == -1) {
             perror("Command execution failed");
             exit(1);
@@ -233,7 +227,7 @@ int run_commands(){
         run_export();
         return 0;
     }
-    // clear input arr for each new iteration
+    
 }
 
 int main (int argc, char *argv[]) 

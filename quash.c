@@ -23,8 +23,10 @@ char command_in[128];
 char command_out[128];
 
 
-char *argv[];
+char *argv[256];
 int argc;
+
+int job_num = 0;
 
 DIR *dir;
 struct dirent *entry;
@@ -205,7 +207,7 @@ void check_background_jobs() {
             pid_t result = waitpid(background_jobs[i], &status, WNOHANG);
             if (result > 0) {
                 // The background job with PID result has completed
-                printf("Completed: [JOBID] %d %s\n", result, &background_processes[i]); // You can replace [JOBID] and COMMAND as needed.
+                printf("Completed: [%d] %d %s\n", job_num, result, &background_processes[i]); // You can replace [JOBID] and COMMAND as needed.
                 background_jobs[i] = 0; // Clear the job from the array
                 // free(background_processes[i]);
             }
@@ -230,7 +232,8 @@ void run_execution() {
     } else {
         // Parent process
         // In the parent process, you can print the background job started message
-        printf("Background job started: PID %d\n", pid);
+        job_num++;
+        printf("Background job started: [%d] %d\n", job_num, pid);
 
         for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
             if (background_jobs[i] == 0) {

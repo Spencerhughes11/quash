@@ -16,14 +16,14 @@
 #include <sys/wait.h>
 
 // Define a maximum number of background jobs
-#define MAX_BACKGROUND_JOBS 10
+#define MAX_BACKGROUND_JOBS 100
 
 char input[1024];
 char command_in[128];
 char command_out[128];
 
 
-char *argv[256];
+char *argv[1024];
 int argc;
 
 int job_num = 0;
@@ -34,7 +34,7 @@ struct dirent *entry;
 
 // Array to store the PIDs of background jobs
 pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
-char background_processes[MAX_BACKGROUND_JOBS];
+char background_processes[MAX_BACKGROUND_JOBS][128];
 
 
 // prints shell line
@@ -195,7 +195,7 @@ void run_jobs(){
 
 
         
-            printf("JobID: %d process: %s \n",background_jobs[i],&background_processes[i]);
+            printf("[%d] %d %s \n",i+1,background_jobs[i],&background_processes[i]);
         }
     }
 }
@@ -209,7 +209,7 @@ void check_background_jobs() {
                 // The background job with PID result has completed
                 printf("Completed: [%d] %d %s\n", job_num, result, &background_processes[i]); // You can replace [JOBID] and COMMAND as needed.
                 background_jobs[i] = 0; // Clear the job from the array
-                // free(background_processes[i]);
+
             }
         }
     }
@@ -237,7 +237,8 @@ void run_execution() {
 
         for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
             if (background_jobs[i] == 0) {
-                strncpy(&background_processes[i],argv[0],sizeof(argv[0]+3));
+                // char input[] = argv[0];
+                strncpy(&background_processes[i],input,sizeof(input));
                 background_jobs[i] = pid;
                 break;
             }

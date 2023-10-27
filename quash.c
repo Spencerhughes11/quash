@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <sys/wait.h>
 
 // Define a maximum number of background jobs
@@ -64,18 +65,6 @@ void run_cd() {
             perror("cd");
         }
     }
-}
-
-void run_ls() {
-    dir = opendir(".");         // opens current directory
-
-    while ((entry = readdir(dir))) {
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0){  
-            printf("%s\t", entry->d_name);         // while in current directory, print all content
-        }
-    }
-    printf("\n");
-    closedir(dir);      // closes directory
 }
 
 // * FIXME: won't run multilevel env echoes
@@ -319,10 +308,7 @@ int run_commands(){
         // run_pwd();
         return 0;
     }
-    if (strcmp("ls", argv[0]) == 0) {
-        run_ls();
-        return 0;
-    }
+
     if (strcmp("kill", argv[0]) == 0) {
         int signalNumber = atoi(argv[1]); // Convert signal number to integer
         int targetPID = atoi(argv[2]);
@@ -366,11 +352,28 @@ int run_commands(){
 
 }
 
+
+// FIXME: DOEs not work
+// ignores CTRL C, but seg faults when you hit enter
+// CTRL Z still kills 
+
+void ignore_signals() {
+
+        signal( SIGINT, SIG_IGN );
+        signal( SIGTSTP, SIG_IGN );
+        signal( SIGQUIT, SIG_IGN );
+        
+}
+
 int main (int argc, char *argv[]) 
 {
 
     printf("\n\nWelcome to Quash!\n\n");
+
+    ignore_signals();
+
     while(1){
+        ignore_signals();
 
         if (argc == 0){
             continue;

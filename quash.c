@@ -25,7 +25,7 @@ char command_in[128];
 char command_out[128];
 char *s, buf[1024];
 
-char **argv;
+char *argv[64];
 int argc;
 
 int job_num = 0;
@@ -163,13 +163,11 @@ void redirect(int argc) {
     if (pid == 0) {
         int fd_in, fd_out;
         if (is_out) { 
-            printf("FIle: %s\n", file);
-            printf("which_symbol: %s\n", which_symbol);
-            printf(which_symbol == ">>");
-            if (which_symbol == ">") {
+            if (strcmp(which_symbol, ">") == 0) {
+                printf("IN >");
                 fd_out = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            } else if (which_symbol == ">>") {
-                printf("IN here");
+            } else if (strcmp(which_symbol, ">>") == 0) {
+                printf("IN >>");
                 fd_out = open(file, O_WRONLY | O_APPEND, 0644);     // write as append
             } 
             dup2(fd_out, STDOUT_FILENO);
@@ -392,42 +390,42 @@ void run_foreground() {
  *   stores argc and argv values to access
  *   command line input outside of main
 */
-char **tokenize(char *input) {
-    argv = (char **)malloc(sizeof(char *));
-    if (!argv) {
-        perror("Memory allocation error");
-        exit(1);
-    }
+// char **tokenize(char *input) {
+//     argv = (char **)malloc(sizeof(char *));
+//     if (!argv) {
+//         perror("Memory allocation error");
+//         exit(1);
+//     }
 
-    int argc = 0;
-    char *token = strtok(input, " \t\n");
+//     int argc = 0;
+//     char *token = strtok(input, " \t\n");
     
-    while (token != NULL) {
-        // Reallocate memory for argv to accommodate a new argument
-        char **new_argv = (char **)realloc(argv, (argc + 2) * sizeof(char *));
-        if (!new_argv) {
-            perror("Memory reallocation error");
-            exit(1);
-        }
-        argv = new_argv;
+//     while (token != NULL) {
+//         // Reallocate memory for argv to accommodate a new argument
+//         char **new_argv = (char **)realloc(argv, (argc + 2) * sizeof(char *));
+//         if (!new_argv) {
+//             perror("Memory reallocation error");
+//             exit(1);
+//         }
+//         argv = new_argv;
 
-        // Allocate memory for the token and copy it
-        argv[argc] = (char *)malloc(strlen(token) + 1);
-        if (!argv[argc]) {
-            perror("Memory allocation error");
-            exit(1);
-        }
-        strcpy(argv[argc], token);
+//         // Allocate memory for the token and copy it
+//         argv[argc] = (char *)malloc(strlen(token) + 1);
+//         if (!argv[argc]) {
+//             perror("Memory allocation error");
+//             exit(1);
+//         }
+//         strcpy(argv[argc], token);
 
-        argc++;
-        token = strtok(NULL, " \t\n");
-    }
+//         argc++;
+//         token = strtok(NULL, " \t\n");
+//     }
 
-    // Null-terminate the argv array
-    argv[argc] = NULL;
+//     // Null-terminate the argv array
+//     argv[argc] = NULL;
 
-    return argv;
-}
+//     return argv;
+// }
 
 void environment_variables(int argc) {
     for (int i = 0; i < argc; i++) {
@@ -442,12 +440,14 @@ void environment_variables(int argc) {
 
 int run_commands(){
 
-    argv = tokenize(input);
+        // parse_command_line();
     int argc = 0;
-    while (argv[argc] != NULL) {
-        argc++;
+    char *token = strtok(input, " ");
+    while (token != NULL) {
+        argv[argc++] = token;
+        token = strtok(NULL, " ");
     }
-    argv[argc] = NULL;      // Null terminate
+    argv[argc] = NULL;
 
     environment_variables(argc);
 

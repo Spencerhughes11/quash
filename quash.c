@@ -17,10 +17,12 @@
 
 // Define a maximum number of background jobs
 #define MAX_BACKGROUND_JOBS 100
+#define PATH ""
 
 char input[1024];
 char command_in[128];
 char command_out[128];
+char *s, buf[1024];
 
 
 char *argv[1024];
@@ -28,6 +30,7 @@ int argc;
 
 DIR *dir;
 struct dirent *entry;
+
 
 
 // Array to store the PIDs of background jobs
@@ -172,6 +175,45 @@ void redirect(int argc) {
     }
 }
 
+void run_pipe(char firstcommand[],char secondcommand[],char lhs[],char rhs[]){
+    int pipe_fd[2]; // Pipe file descriptors
+
+    if (pipe(pipe_fd) == -1) {
+        perror("pipe");
+        exit(1);
+    }
+
+    pid_t child_pid1 = fork();
+    pid_t child_pid2 = fork();
+
+    if (child_pid1 == -1 || child_pid2 == -1) {
+        perror("fork");
+        exit(1);
+    }
+
+    if (child_pid1 == 0) {
+
+        
+
+        // Redirect the read end of the pipe to standard input (stdin)
+        dup2(pipe_fd[1], STDOUT_FILENO);
+        
+        // Close the read end of the pipe
+
+        execvp(firstcommand[0],lhs);
+    }
+    if (child_pid2 == 0){
+        // Parent process        
+        // Redirect standard output (stdout) to the write end of the pipe
+        dup2(pipe_fd[0], STDIN_FILENO);
+
+        execvp(secondcommand[0],rhs);
+    }
+    close(pipe_fd[1]);
+    close(pipe_fd[0]);
+        
+    
+}
 
 /* **********************************************************************************
    *                                      JOBS                                      *
@@ -223,7 +265,7 @@ void run_execution() {
     } else if (pid == 0) {
         // Child process
         // Execute the command in the child process
-        if (execvp(argv[0], NULL) == -1) {
+        if (execvp(argv[0], argv) == -1) {
             perror("Command execution failed");
             exit(1);
         }
@@ -297,7 +339,38 @@ int run_commands(){
         token = strtok(NULL, " ");
     }
     argv[argc] = NULL;
+    if (argc > 3){
+        // try to use argc to compare the length of the command so that it will not run the fist command but will run the pipe 
+        for (int i = 0; i < argc; i++) {
+            if (strcmp("|", argv[i]) == 0) {
+                char lhs[10][100];
+                char rhs[10][100];
+                char firstcommand[128];
+                strncpy(&firstcommand[0], argv[0],sizeof(firstcommand));
+                char secondcommand[128];
+                strncpy(&secondcommand[0], argv[i+1],sizeof(secondcommand));
 
+                for (int j = 1; j < i; j++) {
+                    if (j < 10) {
+                        strncpy(lhs[j], argv[j], sizeof(lhs[j]) - 1);
+                        lhs[j][sizeof(lhs[j]) - 1] = '\0';
+                    }
+                }
+
+                for (int k = i + 2; k < argc; k++) {
+                    int rhsIndex = k - i - 1;
+                    if (rhsIndex < 10) {
+                        strncpy(rhs[rhsIndex], argv[k], sizeof(rhs[rhsIndex]) - 1);
+                        rhs[rhsIndex][sizeof(rhs[rhsIndex]) - 1] = '\0';
+                    }
+                }
+                printf(lhs);
+                printf(rhs);
+                run_pipe(firstcommand,secondcommand,lhs, rhs);    
+    
+        }
+    }
+    }
     
     // exit or quit prompt
     if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){

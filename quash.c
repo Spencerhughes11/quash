@@ -406,20 +406,8 @@ char **tokenize(char *input) {
 
 
 int run_commands(){
-    // fgets(input, sizeof(input), stdin);
-    // input[strlen(input) - 1] = '\0';
-    
-    // parse_command_line();
-    // int argc = 0;
-    // char *token = strtok(input, " ");
-    // while (token != NULL) {
-    //     argv[argc++] = token;
-    //     token = strtok(NULL, " ");
-    // }
-    // argv[argc] = NULL;
 
     argv = tokenize(input);
-    // int argc = sizeof(argv) / sizeof(argv[0]);      // calculates # of args (len of array)
     int argc = 0;
     while (argv[argc] != NULL) {
         argc++;

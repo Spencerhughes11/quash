@@ -1,6 +1,6 @@
 
 quash: quash.c
-		gcc -g quash.c -lpthread -lm -o quash
+		gcc quash.c -o quash
 
 program1: program1.c
 		gcc -g program1.c -lpthread -lm -o program1
@@ -15,3 +15,7 @@ test: quash
 
 clean:
 	rm -rf quash
+	rm *.txt
+
+val: quash
+	valgrind --leak-check=full --track-origins=yes --show-leak-kinds=all ./quash

@@ -4,7 +4,6 @@
    *                    CREATED BY: Spencer Hughes and Pete Junge                    *
    *********************************************************************************** */
 
-
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +14,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 
 // Define a maximum number of background jobs
 #define MAX_BACKGROUND_JOBS 100
@@ -25,9 +25,7 @@ char command_in[128];
 char command_out[128];
 char *s, buf[1024];
 
-
 char **argv;
-// char *argv[1024];
 int argc;
 
 int job_num = 0;
@@ -87,11 +85,19 @@ void run_echo(int argc){
         if (strcmp("#", argv[i]) == 0){
             break;      
         }
-        // handle environment variables
-        if( argv[ i ][ 0 ] == '$' ){
-            char *env_path = getenv(argv[i]);
-        }
-        if (strcmp(argv[i], "&") == 0 || strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0){
+
+        // Handle environment variables
+        char *arg = argv[i];
+        if (arg[0] == '$') {
+            char *env_value = getenv(&arg[1]);  // Remove the '$' sign when calling getenv
+            if (env_value != NULL) {
+                printf("%s ", env_value);
+            }
+            is_env = 1;
+        } 
+        // ignore symbols
+        if (strcmp(argv[i], "&") == 0 || strcmp(argv[i], ">") == 0
+        || strcmp(argv[i], "<") == 0 || strcmp(argv[i], "|") == 0 || strcmp(argv[i], ">>") == 0){
                 break;
         }
         if ((argv[i][0] == *single_quote) || (argv[i][0] == '"') ){       // handles if string begins with single or double quote
@@ -120,65 +126,66 @@ void run_export() {
    *                              REDIRECTION AND PIPES                              *
    *********************************************************************************** */
 
-
-// int is_symbol (int argc) {
-//     int is_in = 0, is_out = 0;
-
-//     for (int i = 0; i < argc; i++){
-//             // Redirect OUT
-//             if (strcmp(argv[i], ">") == 0){
-//                 argv[i] = NULL;
-//                 strcpy(command_out, argv[i+1]);
-//                 is_out = 1;
-//             }
-//             if (strcmp(argv[i], "<") == 0){
-//                 argv[i] = NULL;
-//                 strcpy(command_in, argv[i+1]);
-//                 is_in = 1;
-//             }
-//         }
-//     return 0;
-// }
-
-// * FIXME: not working yet 
 void redirect(int argc) {
     int is_in = 0, is_out = 0;
     int redirect_index = 0;
 
+    char which_symbol[3];
     for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], ">") == 0) {
+        if (strcmp(argv[i], ">") == 0 || strcmp(argv[i], ">>") == 0) {
             redirect_index = i;
             is_out = 1;
-        } else if (strcmp(argv[i], "<") == 0) {
+            strncpy(&which_symbol, argv[i], 2);
+            // printf("IN HERE\n");
+            which_symbol[2] = '\0';     // set to null
+            // printf("argv: %s\n", argv[i]);
+            // printf("which_symbol: %s\n", which_symbol);
+        } 
+        if (strcmp(argv[i], "<") == 0) {
             redirect_index = i;
             is_in = 1;
         }
     }
+    char *file = argv[redirect_index + 1];
+    // Remove the redirection symbol, the filename, and their arguments
+    for (int i = redirect_index; i < argc - 2; i++) {
+        argv[i] = argv[i + 2];
+    }
+    argv[redirect_index] = NULL;
 
+    // for (int i = 0; i < argc; i++) {
+    //     printf("argv[%d]: %s\n", i, argv[i]);
+    //     // printf(argv[i][0]);
+    // }
+
+    // Create a child process to execute the command
     pid_t pid = fork();
-
     if (pid == 0) {
         int fd_in, fd_out;
-        if (is_out) {
-            fd_out = open(argv[redirect_index + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (is_out) { 
+            printf("FIle: %s\n", file);
+            printf("which_symbol: %s\n", which_symbol);
+            printf(which_symbol == ">>");
+            if (which_symbol == ">") {
+                fd_out = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            } else if (which_symbol == ">>") {
+                printf("IN here");
+                fd_out = open(file, O_WRONLY | O_APPEND, 0644);     // write as append
+            } 
             dup2(fd_out, STDOUT_FILENO);
             close(fd_out);
         } else if (is_in) {
-            fd_in = open(argv[redirect_index + 1], O_RDONLY);
+            fd_in = open(file, O_RDONLY);
             dup2(fd_in, STDIN_FILENO);
             close(fd_in);
         }
-
-        // Modify the argv array to exclude the "<" or ">" symbol and the filename
-        argv[redirect_index] = NULL;
-        for (int i = 0; i < argc; i++) {
-            printf("argv[%d]: %s\n", i, argv[i]);
-        }
+        // Execute the command in the child process
         if (execvp(argv[0], argv) == -1) {
             perror("Command execution failed");
             exit(1);
         }
     } else {
+        // Wait for the child process to complete
         wait(NULL);
     }
 }
@@ -284,8 +291,6 @@ void make_pipe(int argc) {
     }
 }
 
-
-
 /* **********************************************************************************
    *                                      JOBS                                      *
    ********************************************************************************** */
@@ -383,25 +388,6 @@ void run_foreground() {
     }
 }
 
-
-/* COMMAND LINE PARSER 
- *   stores argc and argv values to access
- *   command line input outside of main
-*/
-// void parse_command_line() {
-//     argc = 0;
-//     char *token = strtok(input, " ");
-//     while (token != NULL) {
-//         argv[argc++] = token;
-//         token = strtok(NULL, " ");
-//     }
-//     argv[argc] = NULL;
-    
-// }
-
-/* Strips $ off environment variables in order to pass on*/
-
-
 /* COMMAND LINE PARSER 
  *   stores argc and argv values to access
  *   command line input outside of main
@@ -443,6 +429,16 @@ char **tokenize(char *input) {
     return argv;
 }
 
+void environment_variables(int argc) {
+    for (int i = 0; i < argc; i++) {
+        char *arg = argv[i];
+        if (arg[0] == '$') {
+            char *env_name = &arg[1]; // Remove the '$' sign when accessing the variable name
+            char *env_value = getenv(env_name);
+            strcpy(argv[i], env_value);
+         }
+    }
+}
 
 int run_commands(){
 
@@ -451,14 +447,11 @@ int run_commands(){
     while (argv[argc] != NULL) {
         argc++;
     }
+    argv[argc] = NULL;      // Null terminate
 
-    // printf("Input: %s\n", input);
-    // printf("argc: %d\n", argc);
-    for (int i = 0; i < argc; i++) {
-        printf("argv[%d]: %s\n", i, argv[i]);
-        // printf(argv[i][0]);
-    }
-    argv[argc] = NULL;
+    environment_variables(argc);
+
+
     if (argc > 3){
         // try to use argc to compare the length of the command so that it will not run the fist command but will run the pipe 
         for (int i = 0; i < argc; i++) {
@@ -492,6 +485,7 @@ int run_commands(){
     }
     }
     
+    
     // printf("argv: %s\n", argv);
     // exit or quit prompt
     // environment_vars(argc);
@@ -506,6 +500,19 @@ int run_commands(){
         return 0;
     }
 
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0 || strcmp(argv[i], ">>") == 0) {
+            // printf("argv[%d]: %s\n", i, argv[i]);
+            redirect(argc);
+            return 0;
+        }
+        if (strcmp(argv[i], "|") == 0) {
+            // printf("argv[%d]: %s\n", i, argv[i]);
+            make_pipe(argc);
+            return 0;
+        }
+    }
+    
     // prints cd
     if (strcmp("cd", argv[0]) == 0) {
         run_cd();
@@ -529,12 +536,14 @@ int run_commands(){
         run_pwd();
         return 0;
     }
-    if (strcmp("echo", argv[0]) == 0) {
-        run_echo(argc);
-        return 0;
-    }
+    
     if (strcmp("export", argv[0]) == 0) {
         run_export();
+        return 0;
+    }
+
+    if (strcmp("echo", argv[0]) == 0) {
+        run_echo(argc);
         return 0;
     }
 
@@ -549,18 +558,7 @@ int run_commands(){
         run_foreground();
 
     }
-    for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0) {
-            // printf("argv[%d]: %s\n", i, argv[i]);
-            redirect(argc);
-            return 0;
-        }
-        if (strcmp(argv[i], "|") == 0) {
-            // printf("argv[%d]: %s\n", i, argv[i]);
-            make_pipe(argc);
-            return 0;
-        }
-    }
+
 
 
 }

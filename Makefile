@@ -1,9 +1,13 @@
 
 quash: quash.c
-		gcc -g quash.c -lpthread -lm -o quash
+		gcc quash.c -o quash
 
 test: quash
 	./quash
 
 clean:
 	rm -rf quash
+	rm *.txt
+
+val: quash
+	valgrind --leak-check=full --track-origins=yes --show-leak-kinds=all ./quash

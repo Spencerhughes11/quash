@@ -19,18 +19,21 @@
 // Define a maximum number of background jobs
 #define MAX_BACKGROUND_JOBS 100
 
-char input[1024];
+char input[100];
 char command_in[128];
 char command_out[128];
 
 
-char *argv[1024];
+char **argv;
+// char *argv[1024];
 int argc;
 
 int job_num = 0;
 
 DIR *dir;
 struct dirent *entry;
+
+#define MAX_ARGS 64
 
 
 // Array to store the PIDs of background jobs
@@ -84,10 +87,7 @@ void run_echo(int argc){
         }
         // handle environment variables
         if( argv[ i ][ 0 ] == '$' ){
-            env = argv[i] + 1;
-            path = getenv(env);
-            printf(path);
-            is_env = 1;         // is env case
+            char *env_path = getenv(argv[i]);
         }
         if (strcmp(argv[i], "&") == 0 || strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0){
                 break;
@@ -119,49 +119,130 @@ void run_export() {
    *********************************************************************************** */
 
 
-int is_symbol (int argc) {
-    int is_in = 0, is_out = 0;
+// int is_symbol (int argc) {
+//     int is_in = 0, is_out = 0;
 
-    for (int i = 0; i < argc; i++){
-            // Redirect OUT
-            if (strcmp(argv[i], ">") == 0){
-                argv[i] = NULL;
-                strcpy(command_out, argv[i+1]);
-                return 1;
-            }
-            if (strcmp(argv[i], "<") == 0){
-                argv[i] = NULL;
-                strcpy(command_in, argv[i+1]);
-                return 2;
-            }
-        }
-    return 0;
-}
+//     for (int i = 0; i < argc; i++){
+//             // Redirect OUT
+//             if (strcmp(argv[i], ">") == 0){
+//                 argv[i] = NULL;
+//                 strcpy(command_out, argv[i+1]);
+//                 is_out = 1;
+//             }
+//             if (strcmp(argv[i], "<") == 0){
+//                 argv[i] = NULL;
+//                 strcpy(command_in, argv[i+1]);
+//                 is_in = 1;
+//             }
+//         }
+//     return 0;
+// }
 
 // * FIXME: not working yet 
 void redirect(int argc) {
+    int is_in = 0, is_out = 0;
+    int redirect_index = 0;
+
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], ">") == 0) {
+            redirect_index = i;
+            is_out = 1;
+        } else if (strcmp(argv[i], "<") == 0) {
+            redirect_index = i;
+            is_in = 1;
+        }
+    }
+
     pid_t pid = fork();
 
     if (pid == 0) {
         int fd_in, fd_out;
-        if (is_symbol(argc) == 1) {             
-            /* If Redirect outsymbol (>) found */
-            fd_out = open(command_out, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (is_out) {
+            fd_out = open(argv[redirect_index + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
             dup2(fd_out, STDOUT_FILENO);
-
             close(fd_out);
-        }
-        if (is_symbol(argc) == 2) {
-            fd_in = open(command_in, O_RDONLY);
+        } else if (is_in) {
+            fd_in = open(argv[redirect_index + 1], O_RDONLY);
             dup2(fd_in, STDIN_FILENO);
-
             close(fd_in);
         }
-        exit(0);
+
+        // Modify the argv array to exclude the "<" or ">" symbol and the filename
+        argv[redirect_index] = NULL;
+        for (int i = 0; i < argc; i++) {
+            printf("argv[%d]: %s\n", i, argv[i]);
+        }
+        if (execvp(argv[0], argv) == -1) {
+            perror("Command execution failed");
+            exit(1);
+        }
     } else {
         wait(NULL);
     }
 }
+
+void make_pipe(int argc) {
+    int num_pipes = 0;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "|") == 0) {
+            num_pipes++;
+        }
+    }
+
+    int command_start = 0;
+    int command_end;
+
+    for (int pipe_num = 0; pipe_num <= num_pipes; pipe_num++) {
+        // Find the end of the current command
+        command_end = command_start;
+        while (command_end < argc && strcmp(argv[command_end], "|") != 0) {
+            command_end++;
+        }
+
+        // Create a new pipe
+        int fd[2];
+        pipe(fd);
+
+        pid_t child_pid = fork();
+
+        if (child_pid == 0) {
+            // In the child process
+            if (pipe_num > 0) {
+                // If this is not the first command, redirect the stdin from the previous pipe
+                dup2(fd[0], STDIN_FILENO);
+                close(fd[0]); // Close the read end of the pipe
+            }
+            if (pipe_num < num_pipes) {
+                // If this is not the last command, redirect the stdout to the current pipe
+                dup2(fd[1], STDOUT_FILENO);
+                close(fd[1]); // Close the write end of the pipe
+            }
+
+            // Execute the command
+            argv[command_end] = NULL; // Null-terminate the current command
+            execvp(argv[command_start], &argv[command_start]);
+            perror("Command execution failed");
+            exit(1);
+        } else {
+            // In the parent process
+            if (pipe_num > 0) {
+                close(fd[0]); // Close the read end of the previous pipe
+            }
+            if (pipe_num < num_pipes) {
+                close(fd[1]); // Close the write end of the current pipe
+            }
+
+            // Move to the next command
+            command_start = command_end + 1;
+        }
+    }
+
+    // Wait for all child processes to finish
+    for (int i = 0; i <= num_pipes; i++) {
+        wait(NULL);
+    }
+}
+
 
 
 /* **********************************************************************************
@@ -214,7 +295,7 @@ void run_execution() {
     } else if (pid == 0) {
         // Child process
         // Execute the command in the child process
-        if (execvp(argv[0], NULL) == -1) {
+        if (execvp(argv[0], argv) == -1) {
             perror("Command execution failed");
             exit(1);
         }
@@ -266,32 +347,92 @@ void run_foreground() {
  *   stores argc and argv values to access
  *   command line input outside of main
 */
-void parse_command_line() {
-    argc = 0;
-    char *token = strtok(input, " ");
-    while (token != NULL) {
-        argv[argc++] = token;
-        token = strtok(NULL, " ");
-    }
-    argv[argc] = NULL;
+// void parse_command_line() {
+//     argc = 0;
+//     char *token = strtok(input, " ");
+//     while (token != NULL) {
+//         argv[argc++] = token;
+//         token = strtok(NULL, " ");
+//     }
+//     argv[argc] = NULL;
     
+// }
+
+/* Strips $ off environment variables in order to pass on*/
+
+
+/* COMMAND LINE PARSER 
+ *   stores argc and argv values to access
+ *   command line input outside of main
+*/
+char **tokenize(char *input) {
+    argv = (char **)malloc(sizeof(char *));
+    if (!argv) {
+        perror("Memory allocation error");
+        exit(1);
+    }
+
+    int argc = 0;
+    char *token = strtok(input, " \t\n");
+    
+    while (token != NULL) {
+        // Reallocate memory for argv to accommodate a new argument
+        char **new_argv = (char **)realloc(argv, (argc + 2) * sizeof(char *));
+        if (!new_argv) {
+            perror("Memory reallocation error");
+            exit(1);
+        }
+        argv = new_argv;
+
+        // Allocate memory for the token and copy it
+        argv[argc] = (char *)malloc(strlen(token) + 1);
+        if (!argv[argc]) {
+            perror("Memory allocation error");
+            exit(1);
+        }
+        strcpy(argv[argc], token);
+
+        argc++;
+        token = strtok(NULL, " \t\n");
+    }
+
+    // Null-terminate the argv array
+    argv[argc] = NULL;
+
+    return argv;
 }
 
+
 int run_commands(){
-    fgets(input, sizeof(input), stdin);
-    input[strlen(input) - 1] = '\0';
+    // fgets(input, sizeof(input), stdin);
+    // input[strlen(input) - 1] = '\0';
     
     // parse_command_line();
-    int argc = 0;
-    char *token = strtok(input, " ");
-    while (token != NULL) {
-        argv[argc++] = token;
-        token = strtok(NULL, " ");
-    }
-    argv[argc] = NULL;
+    // int argc = 0;
+    // char *token = strtok(input, " ");
+    // while (token != NULL) {
+    //     argv[argc++] = token;
+    //     token = strtok(NULL, " ");
+    // }
+    // argv[argc] = NULL;
 
-    
+    argv = tokenize(input);
+    // int argc = sizeof(argv) / sizeof(argv[0]);      // calculates # of args (len of array)
+    int argc = 0;
+    while (argv[argc] != NULL) {
+        argc++;
+    }
+
+    // printf("Input: %s\n", input);
+    // printf("argc: %d\n", argc);
+    for (int i = 0; i < argc; i++) {
+        printf("argv[%d]: %s\n", i, argv[i]);
+        // printf(argv[i][0]);
+    }
+    // printf("argv: %s\n", argv);
     // exit or quit prompt
+    // environment_vars(argc);
+
     if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){
         printf("Exiting quash...\n\n");
         exit(0);
@@ -345,50 +486,51 @@ int run_commands(){
         run_foreground();
 
     }
-    if (is_symbol(argc) == 1 || is_symbol(argc) == 2) {
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0) {
+            // printf("argv[%d]: %s\n", i, argv[i]);
             redirect(argc);
             return 0;
         }
+        if (strcmp(argv[i], "|") == 0) {
+            // printf("argv[%d]: %s\n", i, argv[i]);
+            make_pipe(argc);
+            return 0;
+        }
+    }
+
 
 }
 
 
 // FIXME: DOEs not work
-// ignores CTRL C, but seg faults when you hit enter
 // CTRL Z still kills 
 
 void ignore_signals() {
 
         signal( SIGINT, SIG_IGN );
         signal( SIGTSTP, SIG_IGN );
-        signal( SIGQUIT, SIG_IGN );
-        
+        signal( SIGQUIT, SIG_IGN );       
 }
 
-int main (int argc, char *argv[]) 
-{
-
+int main (int argc, char *argv[])  {
     printf("\n\nWelcome to Quash!\n\n");
-
-    ignore_signals();
-
-    while(1){
+    while (1) {
         ignore_signals();
 
-        if (argc == 0){
+        print_quash();  // Print the shell prompt
+        fgets(input, sizeof(input), stdin);
+        input[strlen(input) - 1] = '\0';  // Remove the newline character
+
+        // Check for empty input
+        if (strlen(input) == 0) {
             continue;
         }
-        if (argv[0] == "\n"){
-            print_quash();
-        } else {
-            parse_command_line();
-            print_quash();
-            run_commands();
-            
-            check_background_jobs();
 
-        }
-
+        // Process the user input
+        run_commands();
+        check_background_jobs();
     }
+
     return 0;
 }

@@ -183,6 +183,45 @@ void redirect(int argc) {
     }
 }
 
+void run_pipe(char firstcommand[],char secondcommand[],char lhs[],char rhs[]){
+    int pipe_fd[2]; // Pipe file descriptors
+
+    if (pipe(pipe_fd) == -1) {
+        perror("pipe");
+        exit(1);
+    }
+
+    pid_t child_pid1 = fork();
+    pid_t child_pid2 = fork();
+
+    if (child_pid1 == -1 || child_pid2 == -1) {
+        perror("fork");
+        exit(1);
+    }
+
+    if (child_pid1 == 0) {
+
+        
+
+        // Redirect the read end of the pipe to standard input (stdin)
+        dup2(pipe_fd[1], STDOUT_FILENO);
+        
+        // Close the read end of the pipe
+
+        execvp(firstcommand[0],lhs);
+    }
+    if (child_pid2 == 0){
+        // Parent process        
+        // Redirect standard output (stdout) to the write end of the pipe
+        dup2(pipe_fd[0], STDIN_FILENO);
+
+        execvp(secondcommand[0],rhs);
+    }
+    close(pipe_fd[1]);
+    close(pipe_fd[0]);
+        
+    
+}
 void make_pipe(int argc) {
     int num_pipes = 0;
     for (int i = 0; i < argc; i++) {

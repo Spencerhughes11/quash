@@ -3,7 +3,7 @@
    *                                                                                 *
    *                    CREATED BY: Spencer Hughes and Pete Junge                    *
    *********************************************************************************** */
-
+// libraries
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,9 +16,8 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 
-// Define a maximum number of background jobs
+/* ********************** GLOBAL VARIABLES ********************** */
 #define MAX_BACKGROUND_JOBS 100
-#define PATH ""
 
 char input[100];
 char command_in[128];
@@ -35,16 +34,9 @@ struct dirent *entry;
 
 #define MAX_ARGS 64
 
-
 // Array to store the PIDs of background jobs
 pid_t background_jobs[MAX_BACKGROUND_JOBS] = {0};
 char background_processes[MAX_BACKGROUND_JOBS][128];
-
-
-// prints shell line
-void print_quash(){
-    printf("[QUASH]$ ");
-}
 
 /* **********************************************************************************
    *                              BASIC SHELL COMMANDS                              *
@@ -58,7 +50,6 @@ void run_pwd() {
 }
 
 void run_cd() {
-    // char up_dir = "..";
     if (argv[1] == NULL || strcmp(argv[1], "~") == 0){
         chdir(getenv("HOME"));
     } else if (strcmp(argv[1], "..") == 0 || strcmp(argv[1], "../") == 0) {
@@ -69,10 +60,6 @@ void run_cd() {
         }
     }
 }
-
-// * FIXME: won't run multilevel env echoes
-// * ex: echo $HOME/Desktop
-// * REDIRECTION: still echoes string before > or <
 
 void run_echo(int argc){
     char *single_quote = "'";
@@ -135,11 +122,8 @@ void redirect(int argc) {
         if (strcmp(argv[i], ">") == 0 || strcmp(argv[i], ">>") == 0) {
             redirect_index = i;
             is_out = 1;
-            strncpy(&which_symbol, argv[i], 2);
-            // printf("IN HERE\n");
-            which_symbol[2] = '\0';     // set to null
-            // printf("argv: %s\n", argv[i]);
-            // printf("which_symbol: %s\n", which_symbol);
+            strncpy(which_symbol, argv[i], 2);
+            which_symbol[2] = '\0';     // null terminate
         } 
         if (strcmp(argv[i], "<") == 0) {
             redirect_index = i;
@@ -152,11 +136,6 @@ void redirect(int argc) {
         argv[i] = argv[i + 2];
     }
     argv[redirect_index] = NULL;
-
-    // for (int i = 0; i < argc; i++) {
-    //     printf("argv[%d]: %s\n", i, argv[i]);
-    //     // printf(argv[i][0]);
-    // }
 
     // Create a child process to execute the command
     pid_t pid = fork();
@@ -188,45 +167,6 @@ void redirect(int argc) {
     }
 }
 
-void run_pipe(char firstcommand[],char secondcommand[],char lhs[],char rhs[]){
-    int pipe_fd[2]; // Pipe file descriptors
-
-    if (pipe(pipe_fd) == -1) {
-        perror("pipe");
-        exit(1);
-    }
-
-    pid_t child_pid1 = fork();
-    pid_t child_pid2 = fork();
-
-    if (child_pid1 == -1 || child_pid2 == -1) {
-        perror("fork");
-        exit(1);
-    }
-
-    if (child_pid1 == 0) {
-
-        
-
-        // Redirect the read end of the pipe to standard input (stdin)
-        dup2(pipe_fd[1], STDOUT_FILENO);
-        
-        // Close the read end of the pipe
-
-        execvp(firstcommand[0],lhs);
-    }
-    if (child_pid2 == 0){
-        // Parent process        
-        // Redirect standard output (stdout) to the write end of the pipe
-        dup2(pipe_fd[0], STDIN_FILENO);
-
-        execvp(secondcommand[0],rhs);
-    }
-    close(pipe_fd[1]);
-    close(pipe_fd[0]);
-        
-    
-}
 void make_pipe(int argc) {
     int num_pipes = 0;
     for (int i = 0; i < argc; i++) {
@@ -235,55 +175,74 @@ void make_pipe(int argc) {
         }
     }
 
-    int command_start = 0;
-    int command_end;
+    // variables for separate commands
+    int start_command = 0;
+    int end_command;
+    int fds[num_pipes][2];      // will need multiple file descriptors
 
-    for (int pipe_num = 0; pipe_num <= num_pipes; pipe_num++) {
+    for (int pipe_num = 0; pipe_num < num_pipes; pipe_num++) {
+        pipe(fds[pipe_num]);        // pipe for each command
+    }
+
+    for (int pipe_num = 0; pipe_num < num_pipes + 1; pipe_num++) {
         // Find the end of the current command
-        command_end = command_start;
-        while (command_end < argc && strcmp(argv[command_end], "|") != 0) {
-            command_end++;
+        end_command = start_command;
+        while (end_command < argc && strcmp(argv[end_command], "|") != 0) {
+            end_command++;
         }
-
-        // Create a new pipe
-        int fd[2];
-        pipe(fd);
 
         pid_t child_pid = fork();
 
         if (child_pid == 0) {
             // In the child process
             if (pipe_num > 0) {
-                // If this is not the first command, redirect the stdin from the previous pipe
-                dup2(fd[0], STDIN_FILENO);
-                close(fd[0]); // Close the read end of the pipe
+                // Redirect in from the left pipe
+                dup2(fds[pipe_num - 1][0], STDIN_FILENO);
+                close(fds[pipe_num - 1][0]);
+                close(fds[pipe_num - 1][1]);
             }
             if (pipe_num < num_pipes) {
-                // If this is not the last command, redirect the stdout to the current pipe
-                dup2(fd[1], STDOUT_FILENO);
-                close(fd[1]); // Close the write end of the pipe
+                // Redirect output to the current pipe
+                dup2(fds[pipe_num][1], STDOUT_FILENO);
+                close(fds[pipe_num][0]);
+                close(fds[pipe_num][1]);
             }
 
             // Execute the command
-            argv[command_end] = NULL; // Null-terminate the current command
-            execvp(argv[command_start], &argv[command_start]);
+            int temp_argc = end_command - start_command;
+            char *temp_argv[temp_argc + 1];
+
+            // repopulate new argv array with only certain commands
+            for (int i = 0; i < temp_argc; i++) {
+                temp_argv[i] = argv[start_command + i];
+            }
+
+            temp_argv[temp_argc] = NULL;        // null terminate
+
+            execvp(temp_argv[0], temp_argv);        // execute args in new array
             perror("Command execution failed");
             exit(1);
+
         } else {
-            // In the parent process
+            // parent
             if (pipe_num > 0) {
-                close(fd[0]); // Close the read end of the previous pipe
-            }
-            if (pipe_num < num_pipes) {
-                close(fd[1]); // Close the write end of the current pipe
+                // close pipes
+                close(fds[pipe_num - 1][0]);
+                close(fds[pipe_num - 1][1]);
             }
 
             // Move to the next command
-            command_start = command_end + 1;
+            start_command = end_command + 1;
         }
     }
 
-    // Wait for all child processes to finish
+    // Close any remaining pipes
+    for (int i = 0; i < num_pipes; i++) {
+        close(fds[i][0]);
+        close(fds[i][1]);
+    }
+
+    // Wait for child processes to finish
     for (int i = 0; i <= num_pipes; i++) {
         wait(NULL);
     }
@@ -293,7 +252,7 @@ void make_pipe(int argc) {
    *                                      JOBS                                      *
    ********************************************************************************** */
 
-void run_kill(int signal, int pid){
+int run_kill(int signal, int pid){
     if (kill(pid, signal) == 0) {
         printf("Signal %d sent to process with ID %d\n", signal, pid);
         return 0;
@@ -303,26 +262,23 @@ void run_kill(int signal, int pid){
     }
 }
 void run_jobs(){
-    // printf("Current Running Jobs:");
     for (int i = 0; i < 10;i++){
         if (background_jobs[i] != 0){
-
-
-        
-            printf("[%d] %d %s \n",i+1,background_jobs[i],&background_processes[i]);
+            printf("[%d] %d %s \n",i+1,background_jobs[i],background_processes[i]);
         }
     }
 }
 
+// checks background jobs for completion
 void check_background_jobs() {
     for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
         if (background_jobs[i] != 0) {
             int status;
             pid_t result = waitpid(background_jobs[i], &status, WNOHANG);
             if (result > 0) {
-                // The background job with PID result has completed
-                printf("Completed: [%d] %d %s\n", job_num, result, &background_processes[i]); // You can replace [JOBID] and COMMAND as needed.
-                background_jobs[i] = 0; // Clear the job from the array
+                // completed background job notification
+                printf("Completed: [%d] %d %s\n", job_num, result, background_processes[i]);       
+                background_jobs[i] = 0;         // Clear job from array
 
             }
         }
@@ -337,22 +293,20 @@ void run_execution() {
         perror("Fork failed");
         exit(1);
     } else if (pid == 0) {
-        // Child process
+        // Child
         // Execute the command in the child process
         if (execvp(argv[0], argv) == -1) {
             perror("Command execution failed");
             exit(1);
         }
     } else {
-        // Parent process
         // In the parent process, you can print the background job started message
         job_num++;
         printf("Background job started: [%d] %d\n", job_num, pid);
 
         for (int i = 0; i < MAX_BACKGROUND_JOBS; i++) {
             if (background_jobs[i] == 0) {
-                // char input[] = argv[0];
-                strncpy(&background_processes[i],input,sizeof(input));
+                strncpy(background_processes[i],input,sizeof(input));
                 background_jobs[i] = pid;
                 break;
             }
@@ -370,63 +324,21 @@ void run_foreground() {
         perror("Fork failed");
         exit(1);
     } else if (pid == 0) {
-        // Child process
-        // Execute the command in the child process
+        // Execute command in the child process
         if (execvp(argv[0], argv) == -1) {
             perror("Command execution failed");
             exit(1);
         }
     } else {
-        // Parent process
         int status;
-        // Wait for the child process to complete
+        // Wait for  child process to complete
         if (waitpid(pid, &status, 0) == -1) {
             perror("Wait failed");
         } 
     }
 }
 
-/* COMMAND LINE PARSER 
- *   stores argc and argv values to access
- *   command line input outside of main
-*/
-// char **tokenize(char *input) {
-//     argv = (char **)malloc(sizeof(char *));
-//     if (!argv) {
-//         perror("Memory allocation error");
-//         exit(1);
-//     }
-
-//     int argc = 0;
-//     char *token = strtok(input, " \t\n");
-    
-//     while (token != NULL) {
-//         // Reallocate memory for argv to accommodate a new argument
-//         char **new_argv = (char **)realloc(argv, (argc + 2) * sizeof(char *));
-//         if (!new_argv) {
-//             perror("Memory reallocation error");
-//             exit(1);
-//         }
-//         argv = new_argv;
-
-//         // Allocate memory for the token and copy it
-//         argv[argc] = (char *)malloc(strlen(token) + 1);
-//         if (!argv[argc]) {
-//             perror("Memory allocation error");
-//             exit(1);
-//         }
-//         strcpy(argv[argc], token);
-
-//         argc++;
-//         token = strtok(NULL, " \t\n");
-//     }
-
-//     // Null-terminate the argv array
-//     argv[argc] = NULL;
-
-//     return argv;
-// }
-
+// strips environment variables of $ to pass 
 void environment_variables(int argc) {
     for (int i = 0; i < argc; i++) {
         char *arg = argv[i];
@@ -439,56 +351,20 @@ void environment_variables(int argc) {
 }
 
 int run_commands(){
-
-        // parse_command_line();
+    /* COMMAND LINE PARSER 
+        stores argc and argv values to access
+        command line input outside of main
+    */
     int argc = 0;
-    char *token = strtok(input, " ");
+    char *token = strtok(input, " \n\t");
     while (token != NULL) {
         argv[argc++] = token;
         token = strtok(NULL, " ");
     }
     argv[argc] = NULL;
 
+    // handles environment variables
     environment_variables(argc);
-
-
-    if (argc > 3){
-        // try to use argc to compare the length of the command so that it will not run the fist command but will run the pipe 
-        for (int i = 0; i < argc; i++) {
-            if (strcmp("|", argv[i]) == 0) {
-                char lhs[10][100];
-                char rhs[10][100];
-                char firstcommand[128];
-                strncpy(&firstcommand[0], argv[0],sizeof(firstcommand));
-                char secondcommand[128];
-                strncpy(&secondcommand[0], argv[i+1],sizeof(secondcommand));
-
-                for (int j = 1; j < i; j++) {
-                    if (j < 10) {
-                        strncpy(lhs[j], argv[j], sizeof(lhs[j]) - 1);
-                        lhs[j][sizeof(lhs[j]) - 1] = '\0';
-                    }
-                }
-
-                for (int k = i + 2; k < argc; k++) {
-                    int rhsIndex = k - i - 1;
-                    if (rhsIndex < 10) {
-                        strncpy(rhs[rhsIndex], argv[k], sizeof(rhs[rhsIndex]) - 1);
-                        rhs[rhsIndex][sizeof(rhs[rhsIndex]) - 1] = '\0';
-                    }
-                }
-                printf(lhs);
-                printf(rhs);
-                run_pipe(firstcommand,secondcommand,lhs, rhs);    
-    
-        }
-    }
-    }
-    
-    
-    // printf("argv: %s\n", argv);
-    // exit or quit prompt
-    // environment_vars(argc);
 
     if (strcmp("exit", argv[0]) == 0 || strcmp(argv[0], "quit") == 0 ){
         printf("Exiting quash...\n\n");
@@ -500,38 +376,35 @@ int run_commands(){
         return 0;
     }
 
+    // checks for redirection or pipes
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], ">") == 0 || strcmp(argv[i], "<") == 0 || strcmp(argv[i], ">>") == 0) {
-            // printf("argv[%d]: %s\n", i, argv[i]);
             redirect(argc);
             return 0;
         }
         if (strcmp(argv[i], "|") == 0) {
-            // printf("argv[%d]: %s\n", i, argv[i]);
             make_pipe(argc);
             return 0;
         }
     }
     
-    // prints cd
     if (strcmp("cd", argv[0]) == 0) {
         run_cd();
-        // run_pwd();
         return 0;
     }
 
     if (strcmp("kill", argv[0]) == 0) {
-        int signalNumber = atoi(argv[1]); // Convert signal number to integer
+        int signalNumber = atoi(argv[1]);       // Convert signal number to integer
         int targetPID = atoi(argv[2]);
         run_kill(signalNumber, targetPID);
         return 0;
     }
+
     if (strcmp("jobs", argv[0]) == 0) {
         run_jobs();
         return 0;
     }
 
-    // prints pwd
     if (strcmp("pwd", argv[0]) == 0) {
         run_pwd();
         return 0;
@@ -559,36 +432,30 @@ int run_commands(){
 
     }
 
-
-
 }
 
-
-// FIXME: DOEs not work
-// CTRL Z still kills 
-
 void ignore_signals() {
-
-        signal( SIGINT, SIG_IGN );
-        signal( SIGTSTP, SIG_IGN );
-        signal( SIGQUIT, SIG_IGN );       
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+    signal(SIGQUIT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);       
 }
 
 int main (int argc, char *argv[])  {
-    printf("\n\nWelcome to Quash!\n\n");
+    printf("\nWelcome to Quash!\n\n");
     while (1) {
         ignore_signals();
 
-        print_quash();  // Print the shell prompt
+        printf("[QUASH]$ ");
+        //take input
         fgets(input, sizeof(input), stdin);
-        input[strlen(input) - 1] = '\0';  // Remove the newline character
+        input[strlen(input) - 1] = '\0';        // Remove newline 
 
-        // Check for empty input
+        // skip empty input
         if (strlen(input) == 0) {
             continue;
         }
-
-        // Process the user input
+      
         run_commands();
         check_background_jobs();
     }
